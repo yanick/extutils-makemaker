@@ -1,6 +1,6 @@
 package ExtUtils::MakeMaker;
 
-$Version = 3.10; # Last edited 23rd Jan 1995 by Tim Bunce
+$Version = 3.11; # Last edited 24rd Jan 1995 by Andreas Koenig
 
 use Config;
 use Carp;
@@ -51,7 +51,34 @@ to invoke
     perl Makefile.PL
     make
     make test
-    make install
+    make install #usually invoked as root
+
+The Makefile to be produced may be altered by adding arguments of the
+form C<KEY=VALUE>. If the user wants to have the extension installed
+into a directory different from C<$Config{"installprivlib"}> it can be
+done by specifying
+
+    perl Makefile.PL INST_LIB=~/myperllib
+
+Note, that in this example MakeMaker does the tilde expansion for you
+and INST_ARCHLIB is set to either C<INST_LIB/$Config{"osname"}> if
+that directory exists and otherwise to INST_LIB.
+
+Other interesting targets in the generated Makefile are
+
+    make config     #to check if the Makefile is up-to-date
+    make clean      #to delete all the files that make up the extension
+    make realclean  #to delete all intermediate files (including Makefile)
+    make distclean  #to produce a gzipped file ready for shipping
+
+The macros in the produced Makefile may be overriden on the command
+line to the make call like:
+
+    make INST_LIB=/some/where INST_ARCHLIB=/some/where
+
+Note, that this is a solution provided by C<make> in general, so tilde
+expansion will probably not be available and INST_ARCHLIB woll not be
+set automatically when INST_LIB is given as argument.
 
 (This section is yet to be completed ...)
 
@@ -151,12 +178,6 @@ v3.4 December  7th 1994 by Andreas Koenig and Tim Bunce.
 v3.5 December 15th 1994 by Tim Bunce.
 v3.6 December 15th 1994 by Tim Bunce.
 v3.7 December 30th 1994 By Tim Bunce
-
-Most, if not all, the MakeMaker support for no perl source is now
-included. Recent ld and mkbootstrap patches applied.  -lX11_s suffix
-fix applied.  Also contained patches to Makefile.SH,
-ext/DynaLoader/DynaLoader.pm, ext/util/make_ext, and h2xs
-
 v3.8 January 17th 1995 By Andreas Koenig and Tim Bunce
 
 - Introduces ./blib as the directory, where the ready-to-use module
@@ -240,6 +261,12 @@ $(XS), $(C) and $(H) renamed to XS_FILES C_FILES and H_FILES.
 INST_STATIC now INST_ARCHLIBDIR/BASEEXT.a (alongside INST_DYNAMIC).
 Static lib no longer copied back to local directory.
 
+v3.11 January 24th 1995 By Andreas Koenig
+
+DynaLoader.c was not deleted by clean target, now fixed.
+Added PMDIR attribute that allows directories to be named that contain
+only *.p[pl] files to be installed into INST_LIB. Added some documentation.
+
 =head1 NOTES
 
 MakeMaker development work still to be done:
@@ -248,6 +275,9 @@ Needs more complete documentation.
 
 Add method to take a list of files and wrap it in a Makefile
 compatible way (<space><backslash><newline><tab>).
+
+Add a html: target when there has been found a general solution to
+installing html files.
 
 =cut
 
@@ -314,6 +344,8 @@ $Attrib_Help = <<'END';
 		exists and is not listed in DIR (above) then any *.pm and
 		*.pl files it contains will also be included by default.
 
+ PMDIR:		Arrayref to directories containing *.p[ml] files to be installed.
+
  XS:		Hashref of .xs files. MakeMaker will default this.
 		e.g. { 'name_of_file.xs' => 'name_of_file.c' }
 		The .c files will automatically be included in the list
@@ -340,7 +372,7 @@ normally required:
 
  installpm:	{SPLITLIB => '$(INST_LIB)' (default) or '$(INST_ARCHLIB)'}
  linkext:	{LINKTYPE => 'static', 'dynamic' or ''}
- dynamic_lib	{ARMAYBE => 'ar', OTHERLDFLAGS => '...'}
+ dynamic_lib:	{ARMAYBE => 'ar', OTHERLDFLAGS => '...'}
  clean:		{FILES => "*.xyz foo"}
  realclean:	{FILES => '$(INST_ARCHAUTODIR)/*.xyz'}
  distclean:	{TARNAME=>'MyTarFile', TARFLAGS=>'cvfF', COMPRESS=>'gzip'}
@@ -680,7 +712,8 @@ sub init_main {
 
 sub init_dirscan {	# --- File and Directory Lists (.xs .pm etc)
 
-    my($name, %dir, %xs, %pm, %c, %h, %ignore);
+    my($name, %dir, %xs, %c, %h, %ignore);
+    local(%pm); #the sub in find() has to see this hash
     $ignore{'test.pl'} = 1;
     $ignore{'makefile.pl'} = 1 if $Is_VMS;
     foreach $name (lsdir(".")){
@@ -700,23 +733,19 @@ sub init_dirscan {	# --- File and Directory Lists (.xs .pm etc)
 	}
     }
 
-    # If we have a ./lib dir that does NOT contain a Makefile.PL
-    # then add in any .pm and .pl files in that directory.
-    # This makes it easy and tidy to ship a number of perl files.
-    if (-d "lib" and !$dir{'lib'}){
-	foreach $name (lsdir("lib", '\.p[ml]$')){
-	    $pm{"lib/$name"} = "\$(INST_LIBDIR)/$name";
-	}
-    }
-
-    # Similarly, if we have a ./$(BASEEXT) dir without a Makefile.PL
-    # we treat it as a directory containing *.pm files for modules
-    # which are nested below this one. E.g., ./Tk.pm & ./Tk/Text.pm
-    if (-d $att{BASEEXT} and !$dir{$att{BASEEXT}}){
-	foreach $name (lsdir($att{BASEEXT}, '\.p[ml]$')){
-	    $pm{"$att{BASEEXT}/$name"} = "\$(INST_LIBDIR)/$att{BASEEXT}/$name";
-	}
-    }
+    # If we have an attribute PMDIR, that should be an array 
+    # reference, we recursively go through directories named
+    # in the array and look for all *.pm and *.pl files.
+    # These files are added to the $att{PM} hash table and will be
+    # installed to the corresponding places in INST_LIB
+    # ./lib and ./$(BASEEXT) are added automatically to $att{PMDIR}
+    push @{$att{PMDIR}}, "lib", "$att{BASEEXT}";
+    @{$att{PMDIR}} = grep -d, @{$att{PMDIR}}; #only existing directories allowed
+    @{$att{PMDIR}} = grep !$dir{$_}, @{$att{PMDIR}}; #only those, that aren't in $dir
+    use File::Find;
+    find(sub {
+	$pm{$File::Find::name} = "\$(INST_LIBDIR)/$File::Find::name" if /\.p[ml]$/;
+         }, @{$att{PMDIR}});
 
     $att{DIR} = [sort keys %dir] unless $att{DIRS};
     $att{XS}  = \%xs             unless $att{XS};
@@ -1332,11 +1361,11 @@ clean ::
     # clean subdirectories first
     push(@m, map("\t-cd $_ && test -f Makefile && \$(MAKE) clean\n",@{$att{DIR}}));
     my(@otherfiles) = values %{$att{XS}}; # .c files from *.xs files
+    push(@otherfiles, $attribs{FILES}) if $attribs{FILES};
     push(@m, "	-$att{RM_RF} *~ t/*~ *.o *.a mon.out core so_locations "
 			."\$(BOOTSTRAP) \$(BASEEXT).bso @otherfiles\n");
-    push(@otherfiles, $attribs{FILES}) if $attribs{FILES};
     # See realclean and ext/utils/make_ext for usage of Makefile.old
-    push(@m, "	$att{MV} Makefile Makefile.old || true\n");
+    push(@m, "	-$att{MV} Makefile Makefile.old 2>/dev/null\n");
     push(@m, "	$attribs{POSTOP}\n")   if $attribs{POSTOP};
     join("", @m);
 }
