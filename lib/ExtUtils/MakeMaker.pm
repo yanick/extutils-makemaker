@@ -1,6 +1,6 @@
 package ExtUtils::MakeMaker;
 
-$Version = 3.9;	# Last edited 19th Jan 1995 by Tim Bunce
+$Version = 3.10; # Last edited 23rd Jan 1995 by Tim Bunce
 
 use Config;
 use Carp;
@@ -231,6 +231,14 @@ The dynamic_lib section was revised with explicit dec_osf support added.
 Make clean now renames Makefile to Makefile.old (make_ext also patched).
 The large initialize function has been split into smaller pieces.
 Added I_PERL_LIBS to simplify -I paths for PERL_*LIB.
+
+v3.10 January 23rd 1995 By Tim Bunce
+
+miniperl now given preference when defining PERL. This improves the
+reliability of ext/*/Makefile's recreating themselves if needed.
+$(XS), $(C) and $(H) renamed to XS_FILES C_FILES and H_FILES.
+INST_STATIC now INST_ARCHLIBDIR/BASEEXT.a (alongside INST_DYNAMIC).
+Static lib no longer copied back to local directory.
 
 =head1 NOTES
 
@@ -653,8 +661,9 @@ sub init_main {
     # --- Initialize Perl Binary Locations
 
     # Find Perl 5. The only contract here is that both 'PERL' and 'FULLPERL'
-    # will be working versions of perl 5.
-    $att{'PERL'} = MY->find_perl(5.0, [ qw(perl5 perl miniperl) ],
+    # will be working versions of perl 5. miniperl has priority over perl
+    # for PERL to ensure that $(PERL) is usable while building ./ext/*
+    $att{'PERL'} = MY->find_perl(5.0, [ qw(miniperl perl) ],
 	    [ $att{PERL_SRC}, split(":", $ENV{PATH}), $Config{'bin'} ], 0 )
 	unless ($att{'PERL'} && -x $att{'PERL'});
 
@@ -876,10 +885,10 @@ OBJECT = $att{OBJECT}
 LDFROM = $att{LDFROM}
 LINKTYPE = $att{LINKTYPE}
 
-# Source code:
-XS= ".join(" \\\n\t", sort keys %{$att{XS}})."
-C = ".join(" \\\n\t", @{$att{C}})."
-H = ".join(" \\\n\t", @{$att{H}})."
+# Handy lists of source code files:
+XS_FILES= ".join(" \\\n\t", sort keys %{$att{XS}})."
+C_FILES = ".join(" \\\n\t", @{$att{C}})."
+H_FILES = ".join(" \\\n\t", @{$att{H}})."
 
 .SUFFIXES: .xs
 
@@ -904,9 +913,9 @@ INST_ARCHAUTODIR  = $(INST_ARCHLIB)/auto/$(FULLEXT)
 ';
 
     push @m, '
-INST_BOOT    = $(INST_ARCHAUTODIR)/$(BASEEXT).bs
+INST_STATIC  = $(INST_ARCHAUTODIR)/$(BASEEXT).a
 INST_DYNAMIC = $(INST_ARCHAUTODIR)/$(BASEEXT).$(DLEXT)
-INST_STATIC  = $(INST_ARCHLIBDIR)/$(BASEEXT).a
+INST_BOOT    = $(INST_ARCHAUTODIR)/$(BASEEXT).bs
 INST_PM = '.join(" \\\n\t", sort values %{$att{PM}}).'
 ';
 
@@ -1205,13 +1214,11 @@ END
 
     push(@m, <<'END');
 	ar cr $@ $(OBJECT) && $(RANLIB) $@
-	@: New mechanism - not yet used:
 	@echo "$(EXTRALIBS)" > $(INST_ARCHAUTODIR)/extralibs.ld
 END
     push(@m, <<'END') if $att{PERL_SRC};
 	@: Old mechanism - still needed:
 	@echo "$(EXTRALIBS)" >> $(PERL_SRC)/ext.libs
-	$(CP) $@ $(BASEEXT).a
 END
     join('', "\n",@m);
 }
