@@ -1,6 +1,6 @@
 package ExtUtils::MakeMaker;
 
-$Version = 3.11; # Last edited 24rd Jan 1995 by Andreas Koenig
+$Version = 4.00; # Last edited 24th Jan 1995 by Tim Bunce
 
 use Config;
 use Carp;
@@ -48,17 +48,17 @@ it wishes to have written to the Makefile.
 The automatically generated Makefile enables the user of the extension
 to invoke
 
-    perl Makefile.PL
-    make
-    make test
-    make install #usually invoked as root
+  perl Makefile.PL
+  make
+  make test
+  make install # May need to invoke as root to write into INST_LIB
 
 The Makefile to be produced may be altered by adding arguments of the
 form C<KEY=VALUE>. If the user wants to have the extension installed
 into a directory different from C<$Config{"installprivlib"}> it can be
 done by specifying
 
-    perl Makefile.PL INST_LIB=~/myperllib
+  perl Makefile.PL INST_LIB=~/myperllib
 
 Note, that in this example MakeMaker does the tilde expansion for you
 and INST_ARCHLIB is set to either C<INST_LIB/$Config{"osname"}> if
@@ -66,18 +66,18 @@ that directory exists and otherwise to INST_LIB.
 
 Other interesting targets in the generated Makefile are
 
-    make config     #to check if the Makefile is up-to-date
-    make clean      #to delete all the files that make up the extension
-    make realclean  #to delete all intermediate files (including Makefile)
-    make distclean  #to produce a gzipped file ready for shipping
+  make config     # to check if the Makefile is up-to-date
+  make clean      # delete local temporary files (Makefile gets renamed)
+  make realclean  # delete all derived files (including installed files)
+  make distclean  # produce a gzipped file ready for shipping
 
 The macros in the produced Makefile may be overriden on the command
 line to the make call like:
 
-    make INST_LIB=/some/where INST_ARCHLIB=/some/where
+  make INST_LIB=/some/where INST_ARCHLIB=/some/where
 
 Note, that this is a solution provided by C<make> in general, so tilde
-expansion will probably not be available and INST_ARCHLIB woll not be
+expansion will probably not be available and INST_ARCHLIB will not be
 set automatically when INST_LIB is given as argument.
 
 (This section is yet to be completed ...)
@@ -87,22 +87,31 @@ set automatically when INST_LIB is given as argument.
 MakeMaker needs to know, or to guess, where certain things are located.
 Especially INST_LIB, INST_ARCHLIB, PERL_LIB, PERL_ARCHLIB and PERL_SRC.
 
-Extensions may be built anywhere within the file system after perl has
-been installed correctly. Before perl is installed extensions have to
-be built below the C<ext/> directory within the tree of the perl
-source, i.e. where all the standard extensions are being built. The
-generated Makefile will recognize, which of the two is the current
-configuration and will set some variables accordingly.
+Extensions may be built either using the contents of the perl source
+directory tree or from an installed copy of the perl library.
 
-Only if the extension is being built in PERL_SRC/ext, the variable
-PERL_SRC is defined, otherwise it is undefined.  Consequently
-MakeMaker will default PERL_LIB and PERL_ARCHLIB to PERL_SRC/lib only
-if PERL_SRC is defined, otherwise PERL_*LIB will default to the public
-library locations.
+If an extension is being built below the C<ext/> directory of the perl
+source then MakeMaker will set PERL_SRC automatically (e.g., C<../..>).
+If PERL_SRC is defined then other variables default to the following:
 
-INST_LIB and INST_ARCHLIB default to PERL_LIB and PERL_ARCHLIB if we
-are building below the PERL_SRC/ext directory. Else they default to
-./blib.
+  PERL_INC     = PERL_SRC
+  PERL_LIB     = PERL_SRC/lib
+  PERL_ARCHLIB = PERL_SRC/lib
+  INST_LIB     = PERL_LIB
+  INST_ARCHLIB = PERL_ARCHLIB
+
+If an extension is being built away from the perl source then MakeMaker
+will leave PERL_SRC undefined and default to using the installed copy
+of the perl library. The other variables default to the following:
+
+  PERL_INC     = $archlib/CORE
+  PERL_LIB     = $privlib
+  PERL_ARCHLIB = $archlib
+  INST_LIB     = ./blib
+  INST_ARCHLIB = ./blib
+
+If perl has not yet been installed then PERL_SRC can be defined on the
+command line as shown in the previous section.
 
 =head2 Useful Default Makefile Macros
 
@@ -140,7 +149,8 @@ or as NAME=VALUE pairs on the command line:
 
 This description is not yet documented; you can get at the description
 with the command
-    perl -e 'use ExtUtils::MakeMaker qw(&help); &help;'
+    perl Makefile.PL help    (if you already have a basic Makefile.PL)
+or  perl -e 'use ExtUtils::MakeMaker qw(&help); &help;'
 
 =head2 Overriding MakeMaker Methods
 
@@ -178,7 +188,7 @@ v3.4 December  7th 1994 by Andreas Koenig and Tim Bunce.
 v3.5 December 15th 1994 by Tim Bunce.
 v3.6 December 15th 1994 by Tim Bunce.
 v3.7 December 30th 1994 By Tim Bunce
-v3.8 January 17th 1995 By Andreas Koenig and Tim Bunce
+v3.8 January  17th 1995 By Andreas Koenig and Tim Bunce
 
 - Introduces ./blib as the directory, where the ready-to-use module
 will live for the time of the building process if PERL_SRC/lib is not
@@ -267,6 +277,15 @@ DynaLoader.c was not deleted by clean target, now fixed.
 Added PMDIR attribute that allows directories to be named that contain
 only *.p[pl] files to be installed into INST_LIB. Added some documentation.
 
+v4.00 January 24th 1995 By Tim Bunce
+
+Revised some of the documentation. Changed version number to 4.00 to
+avoid problems caused by my earlier poor choice of 3.10!  Renamed PMDIR
+to PMLIBDIRS and restructured find code to use inherited MY->libscan.
+Added ability to say: "perl Makefile.PL help"  to get help.
+Added ability to say: "perl Makefile.PL verbose"  to get debugging.
+Added MakeMaker version number to generated Makefiles.
+
 =head1 NOTES
 
 MakeMaker development work still to be done:
@@ -338,13 +357,19 @@ $Attrib_Help = <<'END';
  DIR:		Ref to array of subdirectories containing Makefile.PLs
 		e.g. [ 'sdbm' ] in ext/SDBM_File
 
+ PMLIBDIRS:	Ref to array of subdirectories containing library files.
+		Defaults to [ 'lib', $(BASEEXT) ]. The directories will
+		be scanned and any *.pm and *.pl files they contain will
+		be installed in the corresponding location in the library.
+		A MY::libscan() function can be used to alter the behaviour.
+		Defining PM in the Makefile.PL will override PMLIBDIRS.
+
  PM:		Hashref of .pm files and *.pl files to be installed.
 		e.g. { 'name_of_file.pm' => '$(INST_LIBDIR)/install_as.pm' }
 		By default this will include *.pm and *.pl. If a lib directory
 		exists and is not listed in DIR (above) then any *.pm and
 		*.pl files it contains will also be included by default.
-
- PMDIR:		Arrayref to directories containing *.p[ml] files to be installed.
+		Defining PM in the Makefile.PL will override PMLIBDIRS.
 
  XS:		Hashref of .xs files. MakeMaker will default this.
 		e.g. { 'name_of_file.xs' => 'name_of_file.c' }
@@ -455,7 +480,7 @@ sub WriteMakefile {
     select MAKE; $|=1; select STDOUT;
 
     print MAKE "# This Makefile is for the $att{NAME} extension to perl.\n#";
-    print MAKE "# It was generated automatically by MakeMaker from the contents";
+    print MAKE "# It was generated automatically by MakeMaker version $Version from the contents";
     print MAKE "# of Makefile.PL. Don't edit this file, edit Makefile.PL instead.";
     print MAKE "#\n#	ANY CHANGES MADE HERE WILL BE LOST! \n#";
     print MAKE "#   MakeMaker Parameters: ";
@@ -476,7 +501,7 @@ sub WriteMakefile {
 	} else {
 	    my(%a) = %{$att{$section} || {}};
 	    print MAKE "\n# --- MakeMaker $section section:";
-	    print MAKE "# ",%a if ($Verbose >= 2);
+	    print MAKE "# ",%a if $Verbose;
 	    print(MAKE MY->nicetext(MY->$section( %a )));
 	}
     }
@@ -511,7 +536,11 @@ sub mkbootstrap{
 sub parse_args{
     my($attr, @args) = @_;
     foreach (@args){
-	next unless m/(.*?)=(.*)/;
+	unless (m/(.*?)=(.*)/){
+	    help(),exit 1 if m/^help$/;
+	    ++$Verbose if m/^verb/;
+	    next;
+	}
 	my($name, $value) = ($1, $2);
 	if ($value =~ m/^~(\w+)?/){ # tilde with optional username
 	    my($home) = ($1) ? (getpwnam($1))[7] : (getpwuid($>))[7];
@@ -720,38 +749,70 @@ sub init_dirscan {	# --- File and Directory Lists (.xs .pm etc)
 	next if ($name =~ /^\./ or $ignore{$name});
 	if (-d $name){
 	    $dir{$name} = $name if (-f "$name/Makefile.PL");
-	}elsif ($name =~ /\.xs$/){
+	} elsif ($name =~ /\.xs$/){
 	    my($c); ($c = $name) =~ s/\.xs$/.c/;
 	    $xs{$name} = $c;
 	    $c{$c} = 1;
-	}elsif ($name =~ /\.c$/){
+	} elsif ($name =~ /\.c$/){
 	    $c{$name} = 1;
-	}elsif ($name =~ /\.h$/){
+	} elsif ($name =~ /\.h$/){
 	    $h{$name} = 1;
-	}elsif ($name =~ /\.p[ml]$/){
+	} elsif ($name =~ /\.p[ml]$/){
 	    $pm{$name} = "\$(INST_LIBDIR)/$name";
 	}
     }
 
-    # If we have an attribute PMDIR, that should be an array 
-    # reference, we recursively go through directories named
-    # in the array and look for all *.pm and *.pl files.
-    # These files are added to the $att{PM} hash table and will be
-    # installed to the corresponding places in INST_LIB
-    # ./lib and ./$(BASEEXT) are added automatically to $att{PMDIR}
-    push @{$att{PMDIR}}, "lib", "$att{BASEEXT}";
-    @{$att{PMDIR}} = grep -d, @{$att{PMDIR}}; #only existing directories allowed
-    @{$att{PMDIR}} = grep !$dir{$_}, @{$att{PMDIR}}; #only those, that aren't in $dir
-    use File::Find;
-    find(sub {
-	$pm{$File::Find::name} = "\$(INST_LIBDIR)/$File::Find::name" if /\.p[ml]$/;
-         }, @{$att{PMDIR}});
+    # Some larger extensions often wish to install a number of *.pm/pl
+    # files into the library in various locations.
+
+    # The attribute PMLIBDIRS holds an array reference which lists
+    # subdirectories which we should search for library files to
+    # install. PMLIBDIRS defaults to [ 'lib', $att{BASEEXT} ].
+    # We recursively search through the named directories (skipping
+    # any which don't exist or contain Makefile.PL files).
+    # For each *.pm or *.pl file found MY->libscan($path) is called
+    # and returns the path under '$(INST_LIBDIR)/' to install the file.
+    # The default libscan function simply returns $path.
+    # The file is skipped if libscan returns false.
+    # If libscan returns two values the second replaces '$(INST_LIBDIR)/'.
+
+    # The 'lib' directory is treated as a special case. If libscan
+    # returns a leading 'lib/' for a file under 'lib' then the leading
+    # lib/ is removed. This allows a lib directory to be used to
+    # collect together lib files that might clutter the top directory.
+
+    $att{PMLIBDIRS} = [ 'lib', $att{BASEEXT} ] unless $att{PMLIBDIRS};
+
+    #only existing directories that aren't in $dir are allowed
+    @{$att{PMLIBDIRS}} = grep -d && !$dir{$_}, @{$att{PMLIBDIRS}};
+
+    if (@{$att{PMLIBDIRS}}){
+	print "Searching PMLIBDIRS: @{$att{PMLIBDIRS}}"
+	    if ($Verbose >= 2);
+	use File::Find;		# try changing to require !
+	File::Find::find(sub {
+		return unless m/\.p[ml]$/;
+		my($path) = $File::Find::name;
+		my($inst,$prefix) = MY->libscan($path);
+		$inst =~ s:^lib/:: if $path =~ m:^lib/:;
+		print "libscan($path) => '$inst'" if ($Verbose >= 2);
+		return unless $inst;
+		$prefix = '$(INST_LIBDIR)/' unless $prefix;
+		$pm{$path} = "$prefix$inst";
+	     }, @{$att{PMLIBDIRS}});
+    }
 
     $att{DIR} = [sort keys %dir] unless $att{DIRS};
     $att{XS}  = \%xs             unless $att{XS};
     $att{PM}  = \%pm             unless $att{PM};
     $att{C}   = [sort keys %c]   unless $att{C};
     $att{H}   = [sort keys %h]   unless $att{H};
+}
+
+
+sub libscan {
+    my($self, $path) = @_;
+    $path;
 }
 
 
