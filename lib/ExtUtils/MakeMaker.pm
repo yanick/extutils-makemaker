@@ -1,6 +1,6 @@
 package ExtUtils::MakeMaker;
 
-$Version = 4.00; # Last edited 24th Jan 1995 by Tim Bunce
+$Version = 4.01; # Last edited 25th Jan 1995 by Tim Bunce
 
 use Config;
 use Carp;
@@ -314,7 +314,8 @@ unshift(@MM::ISA, $Is_VMS ? qw(ExtUtils::MM_VMS MM_Unix) : qw(MM_Unix));
 
 $Attrib_Help = <<'END';
  NAME:		Perl module name for this extension (DBD::Oracle)
-		This defaults to the directory name.
+		This will default to the directory name but should
+		be explicitly defined in the Makefile.PL.
 
  DISTNAME:	Your name for distributing the package (by tar file)
 		This defaults to NAME above.
@@ -770,16 +771,23 @@ sub init_dirscan {	# --- File and Directory Lists (.xs .pm etc)
     # install. PMLIBDIRS defaults to [ 'lib', $att{BASEEXT} ].
     # We recursively search through the named directories (skipping
     # any which don't exist or contain Makefile.PL files).
-    # For each *.pm or *.pl file found MY->libscan($path) is called
-    # and returns the path under '$(INST_LIBDIR)/' to install the file.
-    # The default libscan function simply returns $path.
-    # The file is skipped if libscan returns false.
-    # If libscan returns two values the second replaces '$(INST_LIBDIR)/'.
 
-    # The 'lib' directory is treated as a special case. If libscan
-    # returns a leading 'lib/' for a file under 'lib' then the leading
-    # lib/ is removed. This allows a lib directory to be used to
-    # collect together lib files that might clutter the top directory.
+    # For each *.pm or *.pl file found MY->libscan() is called with
+    # the default installation path in $_. The return value of libscan
+    # defines the actual installation location.
+    # The default libscan function simply returns $_.
+    # The file is skipped if libscan returns false.
+
+    # The default installation location passed to libscan in $_ is:
+    #
+    #  ./*.pm		=> $(INST_LIBDIR)/*.pm
+    #  ./xyz/...	=> $(INST_LIBDIR)/xyz/...
+    #  ./lib/...	=> $(INST_LIB)/...
+    #
+    # In this way the 'lib' directory is seen as the root of the actual
+    # perl library whereas the others are relative to INST_LIBDIR
+    # (which includes ROOTEXT). This is a subtle distinction but one
+    # that's important for nested modules.
 
     $att{PMLIBDIRS} = [ 'lib', $att{BASEEXT} ] unless $att{PMLIBDIRS};
 
@@ -792,13 +800,13 @@ sub init_dirscan {	# --- File and Directory Lists (.xs .pm etc)
 	use File::Find;		# try changing to require !
 	File::Find::find(sub {
 		return unless m/\.p[ml]$/;
-		my($path) = $File::Find::name;
-		my($inst,$prefix) = MY->libscan($path);
-		$inst =~ s:^lib/:: if $path =~ m:^lib/:;
+		my($path, $prefix) = ($File::Find::name, '$(INST_LIBDIR)');
+		$prefix =  '$(INST_LIB)' if ($path =~ s:^lib/::);
+		local($_) = "$prefix/$path";
+		my($inst) = MY->libscan();
 		print "libscan($path) => '$inst'" if ($Verbose >= 2);
 		return unless $inst;
-		$prefix = '$(INST_LIBDIR)/' unless $prefix;
-		$pm{$path} = "$prefix$inst";
+		$pm{$path} = "$inst";
 	     }, @{$att{PMLIBDIRS}});
     }
 
@@ -811,8 +819,7 @@ sub init_dirscan {	# --- File and Directory Lists (.xs .pm etc)
 
 
 sub libscan {
-    my($self, $path) = @_;
-    $path;
+    $_;
 }
 
 
@@ -1113,7 +1120,6 @@ sub const_loadlibs{
 #		SunOS/Solaris does not need this because ld records
 #		the information (from LDLOADLIBS) into the object file.
 #		This list is used to create a .bs (bootstrap) file.
-#		The bootstrap file is installed only if it's not empty.
 #
 EXTRALIBS  = $att{'EXTRALIBS'}
 LDLOADLIBS = $att{'LDLOADLIBS'}
